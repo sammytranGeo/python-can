@@ -17,6 +17,8 @@ import traceback
 import urllib.parse as urlparselib
 import xml.etree.ElementTree as ET
 from collections import deque
+from typing import Optional, Union, Any
+from can import BitTiming, BitTimingFd
 
 import can
 
@@ -205,7 +207,21 @@ def connect_to_server(s, host, port):
 
 
 class SocketCanDaemonBus(can.BusABC):
-    def __init__(self, channel, host, port, tcp_tune=False, can_filters=None, **kwargs):
+    def __init__(
+        self,
+        channel,
+        host,
+        port,
+        bitrate: int = -1,
+        timing: Optional[Union[BitTiming, BitTimingFd]] = None,
+        config: bool = False,
+        listen_only: bool = False,
+        loopback: bool = False,
+        three_samples: bool = False,
+        tcp_tune: bool = False,
+        can_filters: Optional[can.typechecking.CanFilters] = None,
+        **kwargs: Any,
+    ):
         """Connects to a CAN bus served by socketcand.
 
         It implements :meth:`can.BusABC._detect_available_configs` to search for
@@ -224,6 +240,18 @@ class SocketCanDaemonBus(can.BusABC):
             The host address of the socketcand server.
         :param port:
             The port of the socketcand server.
+        :param bitrate:
+            The bitrate of the CAN bus in bits per second.
+        :param timing:
+            Optional :class:`~can.BitTiming` instance to use for custom bit timing setting.
+        :param config:
+            If True, the bus will be opened with the given configuration.
+        :param listen_only:
+            If True, the bus will be opened in listen-only mode. Only applies when config=True.
+        :param loopback:
+            If True, the bus will be opened in loopback mode. Only applies when config=True.
+        :param three_samples:
+            If True, the bus will be opened with three samples per bit. Only applies when config=True.
         :param tcp_tune:
             This tunes the TCP socket for low latency (TCP_NODELAY, and
             TCP_QUICKACK).
@@ -254,6 +282,50 @@ class SocketCanDaemonBus(can.BusABC):
         log.info(
             f"SocketCanDaemonBus: connected with address {self.__socket.getsockname()}"
         )
+
+        if timing:
+            if (
+                isinstance(timing, BitTiming)
+                and timing.prop_seg is not None
+                and timing.phase_seg1 is not None
+            ):
+                sample_point = timing.sample_point
+                tq = timing.tq
+                prop_seg = timing.prop_seg
+                phase_seg1 = timing.phase_seg1
+                phase_seg2 = timing.tseg2
+                sjw = timing.sjw
+                brp = timing.brp
+            elif isinstance(timing, BitTimingFd):
+                raise NotImplementedError(f"CAN FD is not supported by {self.__class__.__name__}.")
+            else:
+                raise TypeError(f"Invalid timing parameters. {timing}")
+        else:
+            sample_point = -1
+            tq = -1
+            prop_seg = -1
+            phase_seg1 = -1
+            phase_seg2 = -1
+            sjw = -1
+            brp = -1
+
+        if bitrate != -1 or timing is not None:
+            self._tcp_send(
+                f"< {channel} B {bitrate} {sample_point} {tq} {prop_seg} {phase_seg1} {phase_seg2} {sjw} {brp} >"
+            )
+            self._expect_msg("< ok >")
+            self.channel_info += f" bitrate={bitrate} sample_point={sample_point} tq={tq} prop_seg={prop_seg} " \
+                                 f"phase_seg1={phase_seg1} phase_seg2={phase_seg2} sjw={sjw} brp={brp}"
+
+        if config:
+            self._tcp_send(
+                f"< {channel} C {int(listen_only)} {int(loopback)} {int(three_samples)} >"
+            )
+            self._expect_msg("< ok >")
+            self.channel_info += (
+                f" config={config} listen_only={listen_only} loopback={loopback} three_samples={three_samples}"
+            )
+        
         self._tcp_send(f"< open {channel} >")
         self._expect_msg("< ok >")
         self._tcp_send("< rawmode >")

@@ -3,6 +3,8 @@ import math
 from collections.abc import Iterator, Mapping
 from typing import TYPE_CHECKING, cast
 
+from typing import Optional
+
 if TYPE_CHECKING:
     from can.typechecking import BitTimingDict, BitTimingFdDict
 
@@ -38,6 +40,8 @@ class BitTiming(Mapping[str, int]):
         tseg2: int,
         sjw: int,
         nof_samples: int = 1,
+        prop_seg: Optional[int] = None,
+        phase_seg1: Optional[int] = None,
         strict: bool = False,
     ) -> None:
         """
@@ -48,12 +52,20 @@ class BitTiming(Mapping[str, int]):
         :param int tseg1:
             Time segment 1, that is, the number of quanta from (but not including)
             the Sync Segment to the sampling point.
+            Will be overridden by *prop_seg* + *phase_seg1* if they are set.
         :param int tseg2:
             Time segment 2, that is, the number of quanta from the sampling
             point to the end of the bit.
         :param int sjw:
             The Synchronization Jump Width. Decides the maximum number of time quanta
             that the controller can resynchronize every bit.
+        :param int prop_seg:
+            The propagation segment, that is, the number of quanta from the start of the bit
+            to the sampling point. This is used to compensate for the propagation delay
+            of the bus. It is usually set to 0, as it is not used in most CAN controllers.
+        :param int phase_seg1:
+            The phase segment 1, that is, the number of quanta from the start of the bit
+            to the sampling point. This is used to compensate for the phase error of the bus.
         :param int nof_samples:
             Either 1 or 3. Some CAN controllers can also sample each bit three times.
             In this case, the bit will be sampled three quanta in a row,
@@ -66,13 +78,21 @@ class BitTiming(Mapping[str, int]):
         :raises ValueError:
             if the arguments are invalid.
         """
+
+        if prop_seg and phase_seg1:
+            tseg1_actual = prop_seg + phase_seg1
+        else:
+            tseg1_actual = tseg1
+
         self._data: BitTimingDict = {
             "f_clock": f_clock,
             "brp": brp,
-            "tseg1": tseg1,
+            "tseg1": tseg1_actual,
             "tseg2": tseg2,
             "sjw": sjw,
             "nof_samples": nof_samples,
+            "prop_seg": prop_seg,
+            "phase_seg1": phase_seg1,
         }
         self._validate()
         if strict:
@@ -371,6 +391,14 @@ class BitTiming(Mapping[str, int]):
         """Bit timing register 1 for SJA1000."""
         sam = 1 if self.nof_samples == 3 else 0
         return sam << 7 | (self.tseg2 - 1) << 4 | self.tseg1 - 1
+    
+    @property
+    def prop_seg(self) -> Optional[int]:
+        return self._data["prop_seg"]
+
+    @property
+    def phase_seg1(self) -> Optional[int]:
+        return self._data["phase_seg1"]
 
     def oscillator_tolerance(
         self,

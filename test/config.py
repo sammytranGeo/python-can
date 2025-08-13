@@ -59,3 +59,4 @@ IS_PYPY = platform.python_implementation() == "PyPy"
 TEST_CAN_FD = True
 
 TEST_INTERFACE_SOCKETCAN = IS_LINUX and env("TEST_SOCKETCAN")
+TEST_INTERFACE_SOCKETCAND = IS_LINUX and env("TEST_SOCKETCAND")

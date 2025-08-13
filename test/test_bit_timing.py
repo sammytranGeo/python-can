@@ -529,3 +529,13 @@ def test_recreate_with_f_clock():
     assert (fd_timing_80mhz.data_sjw / fd_timing_80mhz.dbt) == pytest.approx(
         fd_timing_60mhz.data_sjw / fd_timing_60mhz.dbt, abs=1e-2
     )
+
+def test_prop_seg_and_phase_seg1():
+    # Test BitTiming with prop_seg and phase_seg1
+    timing = can.BitTiming(
+        f_clock=8_000_000, brp=4, tseg1=11, tseg2=4, sjw=2, nof_samples=3,
+        prop_seg=2, phase_seg1=9
+    )
+    assert timing.prop_seg == 2
+    assert timing.phase_seg1 == 9
+    assert timing.tseg1 == timing.prop_seg + timing.phase_seg1
